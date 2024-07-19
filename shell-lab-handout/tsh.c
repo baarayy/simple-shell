@@ -165,32 +165,51 @@ int main(int argc, char **argv)
 */
 void eval(char *cmdline) 
 {
-    char *argv[MAXARGS];
-    char buf[MAXLINE];
-    int bg;
-    pid_t pid;
-    struct job_t *job;
-    strcpy(buf, cmdline);
-    bg = parseline(buf , argv);
-
-    if(argv[0] == NULL)
-        return;
-    if(!builtin_cmd(argv)) {
-        if((pid = fork()) == 0) {
-            if(execve(argv[0], argv, environ) < 0) {
-                printf("%s: Command not found\n", argv[0]);
-                exit(0);
-            }
-        }
-    }
-    if(!bg) {
-        waitfg(pid);
-    }
-    else {
-        job = getjobjid(jobs,pid);
-        printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
-    }
-    return;
+	char *argv[MAXARGS]; /* Argument list execve() */
+	char buf[MAXLINE]; /* Holds modified command line */
+	int bg; /* Should the job run in bg or fg? */
+	pid_t pid; /* Process id */
+	struct job_t *job;
+	sigset_t mask;
+	
+	strcpy(buf, cmdline);
+	bg = parseline(buf, argv);
+	
+	if (argv[0] == NULL) {
+		return;
+	}
+	
+	if (!builtin_cmd(argv)) {
+		sigemptyset(&mask);
+		sigaddset(&mask, SIGCHLD); 
+		sigprocmask(SIG_BLOCK, &mask, NULL); 
+	
+		if ((pid = fork()) == 0) { 
+			sigprocmask(SIG_UNBLOCK, &mask, NULL); 
+			
+			if (setpgid(0, 0) < 0) {
+				unix_error("setpgid error\n");
+			}
+			
+			if (execvp(argv[0], argv) < 0) {
+				printf("%s: Command not found.\n", argv[0]);
+				exit(0);
+			}
+		} 
+		int state = bg ? BG : FG;
+		addjob(jobs, pid, state, cmdline);
+		sigprocmask(SIG_UNBLOCK, &mask, NULL);
+		if (!bg) {
+			waitfg(pid);
+		}
+		else {
+			job = getjobpid(jobs, pid);
+			printf("[%d] (%d) %s", job->jid, pid, cmdline);
+		}
+		
+	}
+	
+	return;
 }
 
 /* 
@@ -272,6 +291,7 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
+    while(pid = fgpid(jobs)) {}
     return;
 }
 
