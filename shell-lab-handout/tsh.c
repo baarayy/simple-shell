@@ -300,7 +300,59 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {
-    return;
+	// either JUST "fg" or "bg" with nothing else
+	if (argv[1] == NULL) {
+		printf("%s command requires PID or %%jobid argument\n", argv[0]); // argv[0] == "fg" or "bg"
+		return;
+	}
+	
+	pid_t pid;
+	int jid;
+	struct job_t* job;
+	
+	// if given a specific PID: i.e. "fg 9999999" where *argv[1] == 9999999
+	if (isdigit(*argv[1])) {
+		pid = atoi(argv[1]); // converts "9999999" into an integer
+		
+		if (!(job = getjobpid(jobs, pid))) {
+			printf("(%d): No such process\n", pid);
+			return;
+		}
+		
+		// grab the job ID
+		jid = pid2jid(pid);
+	}
+	// if given a specific JID: i.e. "fg %2" where *argv[1] == %2
+	else if (*argv[1] == '%') {
+		jid = atoi(argv[1] + 1); // "%2" is argv[1] then arv[1] + 1 is just "2" -- "%155" -> "155"
+		
+		if (!(job = getjobjid(jobs, jid))) {
+			printf("%s: No such job\n", argv[1]);
+			return;
+		}
+		
+		// grab the process ID
+		pid = job->pid;
+	}
+	// "bg ..." or "fg ..." for instance, "bg a"
+	else {
+		printf("%s: argument must be a PID or %%jobid\n", argv[0]);
+		return;
+	}
+	
+	// if PID or JID is valid...
+	kill(-pid, SIGCONT); // negative pid means process group ID (PGID)
+	
+	if (!strcmp(argv[0], "bg")) {
+		printf("[%d] (%d) %s", jid, pid, job->cmdline);
+		job->state = BG;
+	}
+	else if (!strcmp(argv[0], "fg")) {
+		job->state = FG;
+		waitfg(pid);
+	}
+	
+	return;
 }
 
 /* 
