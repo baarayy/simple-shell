@@ -377,7 +377,32 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
-    return;
+    	// reaping the zombie child
+	pid_t wpid;
+	int child_status;
+	
+	// -1 here means waiting for a child to finish
+	// the WNOHANG and WUNTRACED are the conditions to finish waiting for
+	// waitpid() waits for the child process on behalf of the parent process
+	while ((wpid = waitpid(-1, &child_status, WNOHANG | WUNTRACED)) > 0) {
+		
+		// used for SIGINT for child process
+		if (WIFSIGNALED(child_status)) {
+			printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(wpid), wpid, WTERMSIG(child_status));
+			deletejob(jobs, wpid);
+		}
+		// used for SIGSTP for child process
+		else if (WIFSTOPPED(child_status)) {
+			getjobpid(jobs, wpid)->state = ST;
+			printf("Job [%d] (%d) stopped by signal %d\n", pid2jid(wpid), wpid, WSTOPSIG(child_status));
+		}
+		// used for exit of child process
+		else if (WIFEXITED(child_status)) {
+			deletejob(jobs, wpid);
+		}
+	}
+	
+	return;
 }
 
 /* 
@@ -387,7 +412,16 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
-    return;
+	pid_t pid;
+	
+	pid = fgpid(jobs); // foreground process ID
+	
+	// in the parent process
+	if (pid != 0) {
+		kill(-pid, sig); // send signal to entire process group ID (PGID)
+	}
+	
+	return;
 }
 
 /*
@@ -397,7 +431,16 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig) 
 {
-    return;
+    pid_t pid;
+	
+	pid = fgpid(jobs); // foreground process ID
+	
+	// in the parent process
+	if (pid != 0) {
+		kill(-pid, sig); // send signal to entire process group ID (PGID)
+	}
+	
+	return;
 }
 
 /*********************
